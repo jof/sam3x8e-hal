@@ -7,6 +7,7 @@ pub mod gpio;
 pub mod pmc;
 pub mod time;
 pub mod pwm;
+pub mod pwmpin;
 
 #[cfg(test)]
 mod tests {

@@ -1,23 +1,26 @@
 extern crate embedded_hal as hal;
 
 use crate::pmc::Clocks;
+// use crate::gpio::PwmPins;
 use sam3x8e::Peripherals;
 
-struct PWM {
-    peripherals: Peripherals,
-    clocks: Clocks,
+pub struct PWM<'a> {
+    peripherals: &'a Peripherals,
+    clocks: &'a Clocks,
 }
 
-impl PWM {
-    fn new(peripherals: Peripherals, clocks: Clocks) -> Self {
-        PWM {
+
+impl<'a> PWM<'a> {
+    pub fn new(peripherals: &'a Peripherals, clocks: &'a Clocks) -> Self {
+        return PWM {
             peripherals: peripherals,
             clocks: clocks,
         }
     }
 }
 
-#[derive(PartialEq)]
+
+#[derive(PartialEq, Clone, Copy)]
 pub enum Channel {
     CHID0 = 0,
     CHID1 = 1,
@@ -29,23 +32,22 @@ pub enum Channel {
     CHID7 = 7,
 }
 
-// This implementation strives to do something useful over being perfect, as
-// the "unproven" hal::Pwm interface can't express the set of things
-// available on SAM3X
-
-// Prescaler is set to be the Master Clock (MCK) directly
-const WPKEY: u32 = 0x50574D;
+const PWM_WPKEY: u32 = 0x50574D; // "PWM"
 const CPRE: u8 = 0b0000; // Master Clock directly; i.e. No Prescaler
+// Prescaler is set to be the Master Clock (MCK) directly
 const PRESCALER: f32 = 1.0;
+// CALG is cleared, all PWM is left-aligned
+// CPOL is set, output waveform starts high
+// Output pullups are enabled
 
-impl hal::Pwm for PWM {
+impl<'a> hal::Pwm for PWM<'a> {
     type Channel = Channel;
     type Time = f32; // Seconds
     type Duty = f32; // 0.0 ... 1.0
 
     fn enable(&mut self, channel: Self::Channel) {
         self.peripherals.PWM.wpcr.write_with_zero(|w| unsafe {
-            w.wpkey().bits(WPKEY).wpcmd().bits(0).wprg1().set_bit()
+            w.wpkey().bits(PWM_WPKEY).wpcmd().bits(0).wprg1().set_bit()
         }); 
 
         let pwm_sr = self.peripherals.PWM.sr.read();
@@ -72,8 +74,6 @@ impl hal::Pwm for PWM {
             });
         }
 
-        // CALG is cleared, all PWM is left-aligned
-        // CPOL is set, output waveform starts high
         match channel {
             Channel::CHID0 => self.peripherals.PWM.cmr0.write_with_zero(|w| unsafe { w.cpre().bits(CPRE).cpol().set_bit().calg().clear_bit() }),
             Channel::CHID1 => self.peripherals.PWM.cmr1.write_with_zero(|w| unsafe { w.cpre().bits(CPRE).cpol().set_bit().calg().clear_bit() }),
@@ -99,7 +99,7 @@ impl hal::Pwm for PWM {
 
     fn disable(&mut self, channel: Self::Channel) {
         self.peripherals.PWM.wpcr.write_with_zero(|w| unsafe {
-            w.wpkey().bits(WPKEY).wpcmd().bits(0).wprg1().set_bit()
+            w.wpkey().bits(PWM_WPKEY).wpcmd().bits(0).wprg1().set_bit()
         });
         self.peripherals.PWM.dis.write_with_zero(|w| match channel {
             Channel::CHID0 => w.chid0().set_bit(),
@@ -186,7 +186,7 @@ impl hal::Pwm for PWM {
     where
             P: Into<Self::Time> {
         let cprd = ((period.into() * self.clocks.master_clock_freq().0 as f32) / PRESCALER) as u32;
-        self.peripherals.PWM.wpcr.write_with_zero(|w| unsafe { w.wpkey().bits(WPKEY).wpcmd().bits(0).wprg3().set_bit() });
+        self.peripherals.PWM.wpcr.write_with_zero(|w| unsafe { w.wpkey().bits(PWM_WPKEY).wpcmd().bits(0).wprg3().set_bit() });
         self.peripherals.PWM.cprd0.write_with_zero(|w| unsafe { w.cprd().bits(cprd) });
         self.peripherals.PWM.cprd1.write_with_zero(|w| unsafe { w.cprd().bits(cprd) });
         self.peripherals.PWM.cprd2.write_with_zero(|w| unsafe { w.cprd().bits(cprd) });
@@ -197,4 +197,3 @@ impl hal::Pwm for PWM {
         self.peripherals.PWM.cprd7.write_with_zero(|w| unsafe { w.cprd().bits(cprd) });
     }
 }
-
